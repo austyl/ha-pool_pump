@@ -39,6 +39,7 @@ from .const import (
     ATTR_POOL_PUMP_MODE_ENTITY_ID,
     ATTR_POOL_TEMPERATURE_ENTITY_ID,
     ATTR_TOTAL_DAILY_FILTERING_DURATION,
+    ATTR_LAST_VALID_FILTERING_DURATION,
     ATTR_NEXT_RUN_SCHEDULE,
     ATTR_WATER_LEVEL_CRITICAL_ENTITY_ID,
     ATTR_SCHEDULE_BREAK_DURATION_IN_HOURS,
@@ -175,16 +176,19 @@ class PoolPumpManager:
         # Compute total duration based on Pool temperature
         temperature_entity_id = self._hass.data[DOMAIN][ATTR_POOL_TEMPERATURE_ENTITY_ID]
         temperature_state = self._hass.states.get(temperature_entity_id)
+        last_valid_duration = self._hass.data[DOMAIN].get(
+            ATTR_LAST_VALID_FILTERING_DURATION
+        )
         if not temperature_state:
             _LOGGER.warning(
                 "Pool temperature entity unavailable: %s", temperature_entity_id
             )
-            run_hours_total = 0.0
+            run_hours_total = last_valid_duration or 0.0
         elif temperature_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             _LOGGER.warning(
                 "Pool temperature state unavailable: %s", temperature_state.state
             )
-            run_hours_total = 0.0
+            run_hours_total = last_valid_duration or 0.0
         else:
             try:
                 run_hours_total = self._pool_controler.duration(
@@ -195,7 +199,12 @@ class PoolPumpManager:
                     "Pool temperature state is not a number: %s",
                     temperature_state.state,
                 )
-                run_hours_total = 0.0
+                run_hours_total = last_valid_duration or 0.0
+            else:
+                last_valid_duration = run_hours_total
+                self._hass.data[DOMAIN][
+                    ATTR_LAST_VALID_FILTERING_DURATION
+                ] = last_valid_duration
         _LOGGER.debug(
             "Daily filtering total duration: {} hours".format(run_hours_total)
         )
@@ -205,6 +214,11 @@ class PoolPumpManager:
             "{}.{}".format(DOMAIN, ATTR_TOTAL_DAILY_FILTERING_DURATION),
             format(run_hours_total, ".2f"),
         )
+        if last_valid_duration is not None:
+            self._hass.states.async_set(
+                "{}.{}".format(DOMAIN, ATTR_LAST_VALID_FILTERING_DURATION),
+                format(last_valid_duration, ".2f"),
+            )
 
         # Return total duration in hours
         return run_hours_total
