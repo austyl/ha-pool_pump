@@ -15,6 +15,8 @@ from homeassistant.const import (
     SERVICE_TURN_OFF,
     STATE_ON,
     STATE_OFF,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
     ATTR_ENTITY_ID,
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
@@ -91,7 +93,15 @@ async def async_setup(hass: HomeAssistant, config: Config):
         """Service: Check if the pool pump should be running now."""
         # Use a fixed time reference.
         now = dt_util.now()
-        mode = hass.states.get(hass.data[DOMAIN][ATTR_POOL_PUMP_MODE_ENTITY_ID])
+        mode_entity_id = hass.data[DOMAIN][ATTR_POOL_PUMP_MODE_ENTITY_ID]
+        mode = hass.states.get(mode_entity_id)
+        if not mode:
+            _LOGGER.warning("Pool pump mode entity unavailable: %s", mode_entity_id)
+            hass.states.async_set(
+                "{}.{}".format(DOMAIN, ATTR_NEXT_RUN_SCHEDULE),
+                "Unknown (mode unavailable)",
+            )
+            return
         _LOGGER.debug("Pool pump mode: %s", mode.state)
 
         # Only check if pool pump is set to 'Auto'.
@@ -113,7 +123,7 @@ async def async_setup(hass: HomeAssistant, config: Config):
                     _LOGGER.debug("Manager initialised: %s", manager_tomorrow)
                     run = manager_tomorrow.next_run()
                     _LOGGER.debug("Next run: %s", run)
-                schedule = run.pretty_print()
+                schedule = run.pretty_print() if run else "No schedule available"
             # Set time range so that this can be displayed in the UI.
             hass.states.async_set(
                 "{}.{}".format(DOMAIN, ATTR_NEXT_RUN_SCHEDULE), schedule
@@ -163,13 +173,29 @@ class PoolPumpManager:
     def _build_parameters(self):
         """Build parameters for pool pump manager."""
         # Compute total duration based on Pool temperature
-        run_hours_total = self._pool_controler.duration(
-            float(
-                self._hass.states.get(
-                    self._hass.data[DOMAIN][ATTR_POOL_TEMPERATURE_ENTITY_ID]
-                ).state
+        temperature_entity_id = self._hass.data[DOMAIN][ATTR_POOL_TEMPERATURE_ENTITY_ID]
+        temperature_state = self._hass.states.get(temperature_entity_id)
+        if not temperature_state:
+            _LOGGER.warning(
+                "Pool temperature entity unavailable: %s", temperature_entity_id
             )
-        )
+            run_hours_total = 0.0
+        elif temperature_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            _LOGGER.warning(
+                "Pool temperature state unavailable: %s", temperature_state.state
+            )
+            run_hours_total = 0.0
+        else:
+            try:
+                run_hours_total = self._pool_controler.duration(
+                    float(temperature_state.state)
+                )
+            except ValueError:
+                _LOGGER.warning(
+                    "Pool temperature state is not a number: %s",
+                    temperature_state.state,
+                )
+                run_hours_total = 0.0
         _LOGGER.debug(
             "Daily filtering total duration: {} hours".format(run_hours_total)
         )
@@ -210,7 +236,16 @@ class PoolPumpManager:
     async def is_water_level_critical(self):
         """Check if water level is critical at the moment."""
         entity_id = self._hass.data[DOMAIN][ATTR_WATER_LEVEL_CRITICAL_ENTITY_ID]
-        return entity_id and self._hass.states.get(entity_id).state == STATE_ON
+        if not entity_id:
+            return False
+        entity_state = self._hass.states.get(entity_id)
+        if not entity_state:
+            _LOGGER.warning("Water level entity unavailable: %s", entity_id)
+            return False
+        if entity_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            _LOGGER.warning("Water level state unavailable: %s", entity_state.state)
+            return False
+        return entity_state.state == STATE_ON
 
     @staticmethod
     def _round_to_next_five_minutes(now):
