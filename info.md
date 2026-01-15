@@ -40,6 +40,14 @@ schedule taking into account the pool water temperature.
 * Splits the total target duration into two runs arround the solar noon.
 1/3 before ans 2/3 after to allow filtering during the hottest part of the day.
 * You can add a customisable break between the two runs.
+* Keeps the last valid computed duration when the temperature sensor is
+  temporarily unavailable.
+* Optional: Apply an adjustment factor (for water quality or other signals)
+  to the computed duration.
+* Exposes `pool_pump.last_valid_filtering_duration` and
+  `pool_pump.quality_adjustment_factor` for dashboards.
+* Adds native sensor entities for total duration, last valid duration, quality
+  factor, and next run schedule.
 * Initialises an entity (`pool_pump.schedule`) that shows the current or next
   run of the pool pump.
 * Optional: Support for a water level sensor to specify an entity that indicates if the
@@ -64,6 +72,7 @@ pool_pump:
   pool_temperature_entity_id: sensor.pool_water_temperature
   # optional:
   water_level_critical_entity_id: binary_sensor.pool_water_level_critical
+  quality_adjustment_entity_id: sensor.pool_water_quality_adjustment
   schedule_break_in_hours: 1.0
 ```
 

@@ -40,6 +40,15 @@ schedule taking into account the pool water temperature.
 * Splits the total target duration into two runs around the solar noon.
 1/3 before ans 2/3 after to allow filtering during the hottest part of the day.
 * You can add a customizable break between the two runs.
+* Keeps the last valid computed duration when the temperature sensor is
+  temporarily unavailable.
+* Exposes `pool_pump.last_valid_filtering_duration` for troubleshooting and
+  dashboards.
+* Optional: Apply an adjustment factor (for water quality or other signals)
+  to the computed duration.
+* Exposes `pool_pump.quality_adjustment_factor` for dashboards.
+* Adds native sensor entities for total duration, last valid duration, quality
+  factor, and next run schedule.
 * Initializes an entity (`pool_pump.schedule`) that shows the current or next
   run of the pool pump.
 * Optional: Support for a water level sensor to specify an entity that indicates if the
@@ -170,10 +179,33 @@ pool_pump:
   pool_temperature_entity_id: sensor.pool_water_temperature
   # optional:
   water_level_critical_entity_id: binary_sensor.pool_water_level_critical
+  quality_adjustment_entity_id: sensor.pool_water_quality_adjustment
   schedule_break_in_hours: 1.0
 ```
 
 Default value for `schedule_break_in_hours` is 0 hours.
+
+### Example: Ondilo ICO-based adjustment factor
+
+If you have Ondilo ICO sensors available in Home Assistant, you can derive an
+adjustment factor using a template sensor and reference it as
+`quality_adjustment_entity_id`. This lets you account for pH/ORP or other
+signals without hardcoding rules in the integration.
+
+```yaml
+template:
+  - sensor:
+      - name: "Pool water quality adjustment"
+        unit_of_measurement: "x"
+        state: >
+          {% set orp = states('sensor.ondilo_ico_orp')|float(0) %}
+          {% set ph = states('sensor.ondilo_ico_ph')|float(0) %}
+          {% if orp < 650 or ph > 7.6 %}
+            1.2
+          {% else %}
+            1.0
+          {% endif %}
+```
 
 ## Contributions are welcome!
 
