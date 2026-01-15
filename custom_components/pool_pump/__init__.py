@@ -38,12 +38,14 @@ from .const import (
     ATTR_SWITCH_ENTITY_ID,
     ATTR_POOL_PUMP_MODE_ENTITY_ID,
     ATTR_POOL_TEMPERATURE_ENTITY_ID,
+    ATTR_QUALITY_ADJUSTMENT_ENTITY_ID,
     ATTR_TOTAL_DAILY_FILTERING_DURATION,
     ATTR_LAST_VALID_FILTERING_DURATION,
     ATTR_NEXT_RUN_SCHEDULE,
     ATTR_WATER_LEVEL_CRITICAL_ENTITY_ID,
     ATTR_SCHEDULE_BREAK_DURATION_IN_HOURS,
     DEFAULT_BREAK_DURATION_IN_HOURS,
+    ATTR_QUALITY_ADJUSTMENT_FACTOR,
 )
 
 CONFIG_SCHEMA = vol.Schema(
@@ -55,6 +57,9 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Required(ATTR_POOL_TEMPERATURE_ENTITY_ID): cv.entity_id,
                 vol.Optional(
                     ATTR_WATER_LEVEL_CRITICAL_ENTITY_ID, default=None
+                ): vol.Any(cv.entity_id, None),
+                vol.Optional(
+                    ATTR_QUALITY_ADJUSTMENT_ENTITY_ID, default=None
                 ): vol.Any(cv.entity_id, None),
                 vol.Optional(
                     ATTR_SCHEDULE_BREAK_DURATION_IN_HOURS,
@@ -85,6 +90,9 @@ async def async_setup(hass: HomeAssistant, config: Config):
     hass.data[DOMAIN][ATTR_SWITCH_ENTITY_ID] = config[DOMAIN][ATTR_SWITCH_ENTITY_ID]
     hass.data[DOMAIN][ATTR_WATER_LEVEL_CRITICAL_ENTITY_ID] = config[DOMAIN][
         ATTR_WATER_LEVEL_CRITICAL_ENTITY_ID
+    ]
+    hass.data[DOMAIN][ATTR_QUALITY_ADJUSTMENT_ENTITY_ID] = config[DOMAIN][
+        ATTR_QUALITY_ADJUSTMENT_ENTITY_ID
     ]
     hass.data[DOMAIN][ATTR_SCHEDULE_BREAK_DURATION_IN_HOURS] = config[DOMAIN][
         ATTR_SCHEDULE_BREAK_DURATION_IN_HOURS
@@ -209,7 +217,13 @@ class PoolPumpManager:
             "Daily filtering total duration: {} hours".format(run_hours_total)
         )
 
-        # Update state with  total duration
+        adjustment_factor = self._read_quality_adjustment_factor()
+        run_hours_total *= adjustment_factor
+        self._hass.states.async_set(
+            "{}.{}".format(DOMAIN, ATTR_QUALITY_ADJUSTMENT_FACTOR),
+            format(adjustment_factor, ".2f"),
+        )
+        # Update state with total duration
         self._hass.states.async_set(
             "{}.{}".format(DOMAIN, ATTR_TOTAL_DAILY_FILTERING_DURATION),
             format(run_hours_total, ".2f"),
@@ -222,6 +236,31 @@ class PoolPumpManager:
 
         # Return total duration in hours
         return run_hours_total
+
+    def _read_quality_adjustment_factor(self):
+        entity_id = self._hass.data[DOMAIN][ATTR_QUALITY_ADJUSTMENT_ENTITY_ID]
+        if not entity_id:
+            return 1.0
+        entity_state = self._hass.states.get(entity_id)
+        if not entity_state:
+            _LOGGER.warning("Adjustment entity unavailable: %s", entity_id)
+            return 1.0
+        if entity_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            _LOGGER.warning("Adjustment entity state unavailable: %s", entity_state.state)
+            return 1.0
+        try:
+            factor = float(entity_state.state)
+        except ValueError:
+            _LOGGER.warning(
+                "Adjustment entity state is not a number: %s", entity_state.state
+            )
+            return 1.0
+        if factor <= 0:
+            _LOGGER.warning(
+                "Adjustment factor must be positive, got: %s", entity_state.state
+            )
+            return 1.0
+        return factor
 
     async def check(self):
         """Check if the pool pump is supposed to run now."""
