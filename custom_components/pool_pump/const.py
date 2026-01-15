@@ -24,7 +24,6 @@ ATTR_QUALITY_ADJUSTMENT_ENTITY_ID = "quality_adjustment_entity_id"
 ATTR_TOTAL_DAILY_FILTERING_DURATION = "total_daily_filtering_duration"
 ATTR_NEXT_RUN_SCHEDULE = "next_run_schedule"
 ATTR_LAST_VALID_FILTERING_DURATION = "last_valid_filtering_duration"
-ATTR_QUALITY_ADJUSTMENT_FACTOR = "quality_adjustment_factor"
 ATTR_SCHEDULE_BREAK_DURATION_IN_HOURS = "schedule_break_in_hours"
 DEFAULT_BREAK_DURATION_IN_HOURS = 0.0
 
